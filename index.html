@@ -1,0 +1,676 @@
+
+<html>
+    <canvas id="root"/>
+    <script>
+        // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+// This is a specialised implementation of a System module loader.
+
+"use strict";
+
+// @ts-nocheck
+/* eslint-disable */
+let System, __instantiate;
+(() => {
+  const r = new Map();
+
+  System = {
+    register(id, d, f) {
+      r.set(id, { d, f, exp: {} });
+    },
+  };
+  async function dI(mid, src) {
+    let id = mid.replace(/\.\w+$/i, "");
+    if (id.includes("./")) {
+      const [o, ...ia] = id.split("/").reverse(),
+        [, ...sa] = src.split("/").reverse(),
+        oa = [o];
+      let s = 0,
+        i;
+      while ((i = ia.shift())) {
+        if (i === "..") s++;
+        else if (i === ".") break;
+        else oa.push(i);
+      }
+      if (s < sa.length) oa.push(...sa.slice(s));
+      id = oa.reverse().join("/");
+    }
+    return r.has(id) ? gExpA(id) : import(mid);
+  }
+
+  function gC(id, main) {
+    return {
+      id,
+      import: (m) => dI(m, id),
+      meta: { url: id, main },
+    };
+  }
+
+  function gE(exp) {
+    return (id, v) => {
+      v = typeof id === "string" ? { [id]: v } : id;
+      for (const [id, value] of Object.entries(v)) {
+        Object.defineProperty(exp, id, {
+          value,
+          writable: true,
+          enumerable: true,
+        });
+      }
+    };
+  }
+
+  function rF(main) {
+    for (const [id, m] of r.entries()) {
+      const { f, exp } = m;
+      const { execute: e, setters: s } = f(gE(exp), gC(id, id === main));
+      delete m.f;
+      m.e = e;
+      m.s = s;
+    }
+  }
+
+  async function gExpA(id) {
+    if (!r.has(id)) return;
+    const m = r.get(id);
+    if (m.s) {
+      const { d, e, s } = m;
+      delete m.s;
+      delete m.e;
+      for (let i = 0; i < s.length; i++) s[i](await gExpA(d[i]));
+      const r = e();
+      if (r) await r;
+    }
+    return m.exp;
+  }
+
+  function gExp(id) {
+    if (!r.has(id)) return;
+    const m = r.get(id);
+    if (m.s) {
+      const { d, e, s } = m;
+      delete m.s;
+      delete m.e;
+      for (let i = 0; i < s.length; i++) s[i](gExp(d[i]));
+      e();
+    }
+    return m.exp;
+  }
+  __instantiate = (m, a) => {
+    System = __instantiate = undefined;
+    rF(m);
+    return a ? gExpA(m) : gExp(m);
+  };
+})();
+
+System.register("jdom", [], function (exports_1, context_1) {
+    "use strict";
+    var h, Fragment, numRenders, colorContext, toHexColor, flat, bodyStyle, canvas, ctx, run, blink;
+    var __moduleName = context_1 && context_1.id;
+    return {
+        setters: [],
+        execute: function () {
+            exports_1("h", h = (type, props, ...children) => type({ ...props, children: flat(children) }));
+            exports_1("Fragment", Fragment = ({ children }) => ({ ch: flat(children) }));
+            numRenders = 0;
+            colorContext = document.createElement('canvas').getContext('2d');
+            toHexColor = s => {
+                colorContext.fillStyle = s;
+                let color = colorContext.fillStyle.substring(1);
+                let alignedColor = "FF" +
+                    color.substring(4, 6) +
+                    color.substring(2, 4) +
+                    color.substring(0, 2);
+                return parseInt(alignedColor, 32);
+            };
+            flat = a => {
+                let out = [];
+                a.forEach(x => {
+                    if (x.length) {
+                        out = [...out, ...x];
+                    }
+                    else {
+                        out.push(x);
+                    }
+                });
+                return out;
+            };
+            bodyStyle = {
+                margin: 0,
+                padding: 0,
+                overscrollBehavior: 'none',
+            };
+            exports_1("canvas", canvas = document.getElementById('root'));
+            exports_1("ctx", ctx = canvas.getContext('2d'));
+            exports_1("run", run = (root) => {
+                let el = document.getElementsByTagName('html')[0];
+                Object.assign(el.style, bodyStyle);
+                el = document.getElementsByTagName('body')[0];
+                Object.assign(el.style, bodyStyle);
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                let buf = new ArrayBuffer(imageData.data.length);
+                let buf8 = new Uint8ClampedArray(buf);
+                let buf32 = new Uint32Array(buf);
+                const clip = ({ x, y, w, h }) => {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(x, y, w, h);
+                    ctx.clip();
+                };
+                var masks = [];
+                const isWithin = (dx, dy, bounds) => {
+                    let { x, y, w, h } = bounds;
+                    return (dx >= x && dx < (x + w) &&
+                        dy >= y && dy < (y + h));
+                };
+                const drawRect = ({ x, y, w, h, c }) => {
+                    for (let dx = 0; dx < w; ++dx) {
+                        for (let dy = 0; dy < h; ++dy) {
+                            if ((dy == 0 || dy == (h - 1) || dx == 0 || dx == (w - 1)) &&
+                                masks.every(node => isWithin(dx + x, dy + y, node))) {
+                                buf32[dx + x + ((dy + y) * canvas.width)] = toHexColor(c);
+                            }
+                        }
+                    }
+                };
+                const text = ({ t, fs, x, y, w, h }) => {
+                    ctx.font = `${fs}px serif`;
+                    const fontHeight = ctx.measureText("M").width;
+                    ctx.fillText(t, x, y + fontHeight);
+                };
+                const clearScreen = () => {
+                    buf32.fill(0xFFFFFFFF);
+                    imageData.data.set(buf8);
+                    ctx.putImageData(imageData, 0, 0);
+                };
+                const render = node => {
+                    clearScreen();
+                    let doStrokeAll = (node) => {
+                        node = applyParenting(node);
+                        node.clip && clip(node);
+                        node.t && node.t.length > 0 && text(node);
+                        node.ch && node.ch.forEach(x => doStrokeAll(x));
+                        node.clip && ctx.restore();
+                    };
+                    let doDrawAll = (node) => {
+                        node = applyParenting(node);
+                        node.clip && masks.push(node);
+                        node.c && drawRect(node);
+                        node.ch && node.ch.forEach(x => doDrawAll(x));
+                        node.clip && masks.pop();
+                    };
+                    doDrawAll(node);
+                    imageData.data.set(buf8);
+                    ctx.putImageData(imageData, 0, 0);
+                    doStrokeAll(node);
+                };
+                const applyParenting = node => !node.parent ? node :
+                    {
+                        ...node,
+                        ch: node.ch.map(child => ({
+                            ...child,
+                            x: child.x + node.x,
+                            y: child.y + node.y,
+                        }))
+                    };
+                const updateDom = node => {
+                    dom.length = 0;
+                    const doUpdateDom = node => {
+                        node = applyParenting(node);
+                        dom.push(node);
+                        node.ch && node.ch.forEach(x => doUpdateDom(x));
+                    };
+                    doUpdateDom(node);
+                };
+                console.log("App");
+                console.log(root());
+                var dom = [];
+                updateDom(root());
+                console.log('dom');
+                console.log(dom);
+                render(root());
+                window.addEventListener('click', ({ offsetX: X, offsetY: Y }) => {
+                    dom.forEach((node) => {
+                        const { x, y, w, h } = node;
+                        if (X > x && X < x + w &&
+                            Y > y && Y < y + h) {
+                            node.onClick && node.onClick();
+                        }
+                        else {
+                            node.blur && node.blur();
+                        }
+                    });
+                    updateDom(root());
+                    render(root());
+                });
+                window.addEventListener('keydown', (e) => {
+                    dom.forEach(el => {
+                        el.onKeyPress && el.onKeyPress({ e, el });
+                    });
+                    updateDom(root());
+                    render(root());
+                });
+                window.addEventListener('mousedown', (e) => {
+                    const { offsetX: X, offsetY: Y } = e;
+                    dom.forEach(el => {
+                        if (X > el.x && X < el.x + el.w &&
+                            Y > el.y && Y < el.y + el.h) {
+                            el.onMouseDown && el.onMouseDown({ e, el });
+                        }
+                    });
+                    updateDom(root());
+                    render(root());
+                });
+                window.addEventListener('mousemove', (e) => {
+                    dom.forEach(el => {
+                        if (el.onMouseMove) {
+                            let shouldUpdate = el.onMouseMove({ e, el });
+                            if (shouldUpdate) {
+                                updateDom(root());
+                                render(root());
+                            }
+                        }
+                    });
+                });
+                window.addEventListener('mouseup', (e) => console.log(e));
+                window.addEventListener('mouseup', (e) => {
+                    dom.forEach(el => {
+                        el.onMouseUp && el.onMouseUp({ e, el });
+                    });
+                    updateDom(root());
+                    render(root());
+                });
+                const onWheelListener = e => {
+                    for (let el of dom.reverse()) {
+                        if (el.onWheel) {
+                            let shouldUpdate = el.onWheel({ e, el });
+                            if (shouldUpdate) {
+                                updateDom(root());
+                                render(root());
+                                e.stopPropagation();
+                                break;
+                            }
+                        }
+                    }
+                };
+                var drawing = false;
+                window.addEventListener('wheel', (e) => {
+                    if (!drawing) {
+                        window.requestAnimationFrame(() => {
+                            onWheelListener(e);
+                            drawing = false;
+                        });
+                        drawing = true;
+                    }
+                });
+                window.setInterval(() => {
+                    exports_1("blink", blink = !blink);
+                    updateDom(root());
+                    render(root());
+                }, 500);
+            });
+            exports_1("blink", blink = false);
+        }
+    };
+});
+System.register("components/textInput", ["jdom"], function (exports_2, context_2) {
+    "use strict";
+    var JDOM, TextInput, breakText, onTextInput;
+    var __moduleName = context_2 && context_2.id;
+    return {
+        setters: [
+            function (JDOM_1) {
+                JDOM = JDOM_1;
+            }
+        ],
+        execute: function () {
+            exports_2("TextInput", TextInput = ({ state, style, children }) => {
+                let { active, cursorIndex, scroll, text } = state;
+                text = text.length > 0 ? text : 'enter text';
+                let { x, y, w, h, fs, } = style;
+                JDOM.ctx.font = `${fs}px serif`;
+                const { lines, curPos } = breakText({ w, fs, state, text });
+                const fontHeight = JDOM.ctx.measureText("Mi").width;
+                const textHeight = fontHeight * lines.length;
+                const maxScroll = textHeight - h;
+                return ({
+                    parent: true,
+                    clip: true,
+                    onClick: () => {
+                        state.active = !active;
+                        cursorIndex = state.text.length;
+                    },
+                    x, y, w, h,
+                    c: active ? 'green' : 'yellow',
+                    ch: [{
+                            x: 0,
+                            y: scroll,
+                            w, h,
+                            parent: true,
+                            ch: [
+                                ...lines.map((line, i) => ({
+                                    x: 0,
+                                    y: i * fontHeight,
+                                    w: 0,
+                                    h: 0,
+                                    t: line,
+                                    fs,
+                                    ch: []
+                                })),
+                                {
+                                    t: active ? '\u23b8' : '',
+                                    x: JDOM.ctx.measureText(lines[curPos.y].substring(0, curPos.x)).width,
+                                    y: curPos.y * fontHeight,
+                                    fs,
+                                    ch: []
+                                }
+                            ]
+                        }],
+                    onKeyPress: ({ e, el }) => {
+                        if (active) {
+                            onTextInput({ e, lines, curPos, state });
+                            const newCurPos = breakText({ w, fs, state, text: state.text });
+                            if ((newCurPos.curPos.y + 1) * fontHeight + state.scroll > h) {
+                                state.scroll = Math.min(h - ((newCurPos.curPos.y + 1) * fontHeight), 0);
+                            }
+                            else if (newCurPos.curPos.y * fontHeight + state.scroll < 0) {
+                                state.scroll = -newCurPos.curPos.y * fontHeight;
+                            }
+                        }
+                    },
+                    blur: () => {
+                        state.active = false;
+                        state.scroll = 0;
+                    },
+                    onWheel: ({ e: { clientX, clientY, deltaY }, el: { x, y, w, h } }) => {
+                        if (maxScroll > 0 &&
+                            clientX > x && clientX < (x + w) &&
+                            clientY > y && clientY < (y + h)) {
+                            state.scroll += deltaY;
+                            state.scroll = Math.max(-maxScroll, Math.min(0, state.scroll));
+                            return true;
+                        }
+                    }
+                });
+            });
+            TextInput.init = data => ({
+                text: '',
+                cursorIndex: 0,
+                scroll: 0,
+                active: false,
+                data
+            });
+            breakText = ({ text, w, fs, state: { cursorIndex } }) => {
+                JDOM.ctx.font = `${fs}px serif`;
+                const t = Array.from(text);
+                var line = "";
+                var lines = [];
+                for (let i = 0; i < t.length; i++) {
+                    let c = t[i];
+                    line += c;
+                    if (c == '\n') {
+                        lines.push(line);
+                        line = '';
+                    }
+                    else if (JDOM.ctx.measureText(line).width >= w) {
+                        lines.push(line.slice(0, line.length - 1));
+                        line = line.slice(line.length - 1);
+                    }
+                }
+                lines.push(line);
+                let x = cursorIndex;
+                let y = 0;
+                for (let line of lines) {
+                    if (line.length >= x && line[x - 1] != '\n') {
+                        break;
+                    }
+                    else {
+                        x -= line.length;
+                        y++;
+                    }
+                }
+                return ({ lines, curPos: { x, y } });
+            };
+            onTextInput = ({ e, lines, curPos: { x, y }, state }) => {
+                let { cursorIndex, text } = state;
+                let { key } = e;
+                switch (key) {
+                    case 'Enter':
+                        state.text = text.slice(0, cursorIndex) + '\n' + text.slice(cursorIndex);
+                        state.cursorIndex++;
+                        break;
+                    case 'Backspace':
+                        if (cursorIndex > 0) {
+                            state.text = text.slice(0, cursorIndex - 1) + text.slice(cursorIndex);
+                            state.cursorIndex--;
+                        }
+                        break;
+                    case "Delete":
+                        state.text = text.slice(0, cursorIndex) + text.slice(cursorIndex + 1);
+                        break;
+                    case 'ArrowUp':
+                        if (y > 0 && !e.metaKey) {
+                            state.cursorIndex -= (x + Math.max((lines[y - 1].length - x), 1));
+                        }
+                        else {
+                            state.cursorIndex = 0;
+                        }
+                        break;
+                    case 'ArrowDown':
+                        if (y < lines.length - 1 && !e.metaKey) {
+                            state.cursorIndex += lines[y].length - x + Math.min(x, (lines[y + 1].length - 1));
+                        }
+                        else {
+                            state.cursorIndex = text.length;
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        if (e.metaKey) {
+                            state.cursorIndex = lines.reduce((a, c, i) => i < y ? a + c.length : a, 0);
+                        }
+                        else {
+                            state.cursorIndex = Math.max((cursorIndex - 1), 0);
+                        }
+                        break;
+                    case 'ArrowRight':
+                        if (e.metaKey) {
+                            state.cursorIndex = state.text.length - lines.reduce((a, c, i) => i > y ? a + c.length : a, y == lines.length - 1 ? 0 : 1);
+                        }
+                        else {
+                            state.cursorIndex = Math.min((cursorIndex + 1), text.length);
+                        }
+                        break;
+                    case 'Shift': break;
+                    case 'Meta': break;
+                    default:
+                        state.text = text.slice(0, cursorIndex) + key + text.slice(cursorIndex);
+                        state.cursorIndex++;
+                        break;
+                }
+            };
+        }
+    };
+});
+System.register("components/list", [], function (exports_3, context_3) {
+    "use strict";
+    var layoutAsList, List;
+    var __moduleName = context_3 && context_3.id;
+    return {
+        setters: [],
+        execute: function () {
+            layoutAsList = ({ children, scroll, vertical }) => {
+                var ch = [];
+                var offset = 0;
+                for (let child of children) {
+                    ch.push({
+                        ...child,
+                        x: vertical ? 0 : offset + scroll,
+                        y: vertical ? offset + scroll : 0,
+                        parent: true
+                    });
+                    offset += (vertical ? child.h : child.w);
+                }
+                return ({ ch, offset });
+            };
+            exports_3("List", List = ({ style, state, children = [], vertical = false }) => {
+                let { x = 0, y = 0, w, h } = style;
+                let { ch, offset } = layoutAsList({ children, scroll: state.scroll, vertical });
+                let maxScroll = offset - (vertical ? style.h : style.w);
+                return ({
+                    ...style,
+                    vertical,
+                    parent: true,
+                    ch,
+                    offset,
+                    clip: true,
+                    onWheel: ({ e, el }) => {
+                        let { clientX, clientY, deltaY, deltaX, timeStamp } = e;
+                        let { x, y, w, h, vertical } = el;
+                        if (clientX > x && clientX < (x + w) &&
+                            clientY > y && clientY < (y + h)) {
+                            if (timeStamp - state.lastScrollTime > 100) {
+                                state.scrollVertical = Math.abs(deltaX) < Math.abs(deltaY);
+                            }
+                            state.lastScrollTime = timeStamp;
+                            if (vertical == state.scrollVertical) {
+                                state.scroll += (vertical ? deltaY : deltaX);
+                                state.scroll = Math.max(-maxScroll, Math.min(0, state.scroll));
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                });
+            });
+            List.init = () => ({
+                scroll: 0,
+                lastScrollTime: 0,
+                scrollVertical: false
+            });
+        }
+    };
+});
+System.register("App", ["jdom", "components/textInput", "components/list"], function (exports_4, context_4) {
+    "use strict";
+    var JDOM, textInput_js_1, list_js_1, dragProps, state, flat, Draggable, Text, Card, Page, App;
+    var __moduleName = context_4 && context_4.id;
+    return {
+        setters: [
+            function (JDOM_2) {
+                JDOM = JDOM_2;
+            },
+            function (textInput_js_1_1) {
+                textInput_js_1 = textInput_js_1_1;
+            },
+            function (list_js_1_1) {
+                list_js_1 = list_js_1_1;
+            }
+        ],
+        execute: function () {
+            dragProps = () => ({
+                last: { x: 0, y: 0 },
+                start: { x: 0, y: 0 },
+                dragging: false,
+                x: 0,
+                y: 0
+            });
+            state = {
+                draggables: [0].map(x => ({
+                    id: x,
+                    ...dragProps()
+                })),
+                textTest: [1, 2, 3].map(x => textInput_js_1.TextInput.init(x)),
+                words: [
+                    "andy", "march", "rules", "real", "hard", "andy", "march", "rules", "real"
+                ],
+                list: list_js_1.List.init(),
+                list2: list_js_1.List.init(),
+                list3: list_js_1.List.init(),
+                list4: list_js_1.List.init(),
+                page: { page: 0 }
+            };
+            flat = a => {
+                let out = [];
+                a.forEach(x => {
+                    if (x.length) {
+                        out = [...out, ...x];
+                    }
+                    else {
+                        out.push(x);
+                    }
+                });
+                return out;
+            };
+            Draggable = ({ props, children }) => {
+                let { last, start, dragging, x, y, id } = props;
+                let ref = state.draggables.filter(x => x.id == id)[0];
+                let self = {
+                    ch: children, w: 100, h: 100, c: 'purple', x, y,
+                    onMouseDown: ({ clientX, clientY }) => {
+                        ref.start = { x: clientX, y: clientY };
+                        ref.dragging = true;
+                    },
+                    onMouseMove: ({ clientX, clientY }) => {
+                        if (dragging) {
+                            ref.x = last.x + (clientX - start.x);
+                            ref.y = last.y + (clientY - start.y);
+                        }
+                        return (dragging);
+                    },
+                    onMouseUp: () => {
+                        ref.dragging = false;
+                        ref.last = { x, y };
+                    }
+                };
+                return self;
+            };
+            Text = ({ center, t, style }) => {
+                const { x, y, w, h, fs } = style;
+                JDOM.ctx.font = `${fs}px serif`;
+                return ({
+                    ...style,
+                    parent: true,
+                    ch: [{
+                            t, fs,
+                            x: center ? (w - JDOM.ctx.measureText(t).width) / 2 : 0,
+                            y: center ? (h - JDOM.ctx.measureText("Mi").width) / 2 : 0
+                        }]
+                });
+            };
+            Card = ({ style: { w = 0, h = 0, t = '', pad = 0, fs = 12, x = 0, y = 0, c }, onClick }) => {
+                return ({
+                    x, y, w, h, c, clip: true, onClick, parent: true,
+                    ch: [
+                        JDOM.h(Text, { center: true, t: t, style: {
+                                x: pad,
+                                y: pad,
+                                w: w - pad * 2,
+                                h: h - pad * 2,
+                                c: 'red',
+                                fs,
+                                r: 5
+                            } })
+                    ]
+                });
+            };
+            Page = ({ state, page, children }) => ({
+                ch: state.page == page ? children : [],
+                x: 0, y: 0, w: 0, h: 0
+            });
+            App = () => JDOM.h(JDOM.Fragment, null,
+                JDOM.h(list_js_1.List, { style: { x: 10, y: 10, w: 530, h: 120, c: 'blue' }, state: state.list, vertical: true },
+                    JDOM.h(list_js_1.List, { style: { w: 530, h: 60, c: 'red' }, state: state.list2 }, state.words.map(word => JDOM.h(Card, { style: { w: 60, h: 50, pad: 5, fs: 14, t: word } }))),
+                    JDOM.h(list_js_1.List, { style: { w: 530, h: 60, c: 'blue' }, state: state.list3 }, state.words.map(word => JDOM.h(Card, { style: { w: 60, h: 50, pad: 5, fs: 14, t: word } }))),
+                    JDOM.h(list_js_1.List, { style: { w: 530, h: 60, c: 'blue' }, state: state.list4 },
+                        state.words.map(word => JDOM.h(Card, { style: { w: 60, h: 50, pad: 5, fs: 14, t: word } })),
+                        JDOM.h(textInput_js_1.TextInput, { state: state.textTest[0], style: { x: 0, y: 0, w: 100, h: 30, fs: 14 } }))));
+            JDOM.run(App);
+        }
+    };
+});
+
+__instantiate("App", false);
+
+    </script>
+</html>

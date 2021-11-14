@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "jsx": "react",
+    "jsxFactory": "JDOM.h",
+    // "jsxFragmentFactory": "JDOM.Fragment",
+    "lib": [ "dom", "deno.ns" ]
+  }
+}
